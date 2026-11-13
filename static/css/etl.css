@@ -7,6 +7,9 @@
   --accent: #c45c26;
   --ok: #2f6b4f;
   --warn: #a67c00;
+  --danger: #9b1c1c;
+  --dead: #7c2d12;
+  --info: #1d4ed8;
   --font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "Cascadia Mono", "Consolas", monospace;
 }
@@ -130,3 +133,149 @@ button.ghost {
 .kv { margin: 0.35rem 0; }
 .kv b { display: inline-block; min-width: 5.5rem; color: var(--muted); font-weight: 600; }
 .empty { color: var(--muted); padding: 1rem 0; }
+.empty.compact { padding: 0.5rem 0; font-size: 0.85rem; }
+
+/* 置顶总览 */
+.overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 720px) {
+  .overview { grid-template-columns: repeat(2, 1fr); }
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.stat.retrying { border-left-color: var(--info); }
+.stat.dead { border-left-color: var(--dead); }
+.stat.manual { border-left-color: var(--warn); }
+.stat.queue { border-left-color: var(--accent); }
+.stat-num { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+.stat.dead .stat-num { color: var(--dead); }
+.stat.retrying .stat-num { color: var(--info); }
+.stat-label { color: var(--muted); font-size: 0.82rem; }
+
+/* 详情 */
+.detail-head { display: flex; justify-content: space-between; gap: 0.8rem; align-items: flex-start; }
+.linklike {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.banner { border-radius: 8px; padding: 0.55rem 0.75rem; font-size: 0.86rem; margin: 0.6rem 0; }
+.warn-banner { background: #ffe6a8; color: var(--warn); border: 1px solid #e3c25f; }
+
+.block-title {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.98rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.8rem;
+}
+.block-title em {
+  font-style: normal;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.78rem;
+}
+.dead-title em { background: var(--dead); }
+.hint-inline { color: var(--muted); font-size: 0.76rem; font-weight: 400; }
+
+/* 重试行 */
+.retry-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.55rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+.queue-box { background: #fff3e2; border-left: 4px solid var(--accent); }
+.queue-box.retrying { border-left-color: var(--info); background: #eef3ff; }
+.queue-box.manual { border-left-color: var(--warn); background: #fff8e0; }
+.dead-box { background: #fbe9e3; border-left: 4px solid var(--dead); }
+.retry-main { flex: 1; min-width: 0; }
+.retry-line { display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap; }
+.retry-ops { display: flex; flex-direction: column; gap: 0.45rem; align-items: stretch; }
+.retry-ops select, .retry-ops button, .settings-box input, .requeue-label input {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+.retry-ops button { padding: 0.4rem 0.8rem; }
+.tag.mini { font-size: 0.7rem; padding: 0.05rem 0.4rem; background: #f0dfc9; }
+.tag.danger { background: #f6d2d2; color: var(--danger); }
+.tag.dead { background: #eccbc0; color: var(--dead); }
+.tag.retrying { background: #d6e2ff; color: var(--info); }
+.tag.manual { background: #ffe6a8; color: var(--warn); }
+.tag.queue { background: #ffd9b8; color: var(--accent); }
+.tag.running { background: #d6e2ff; color: var(--info); margin-left: 0.4rem; }
+.err-text { color: var(--danger); font-size: 0.82rem; margin: 0.25rem 0; }
+.exit-note {
+  font-size: 0.8rem;
+  color: var(--dead);
+  background: #f6e2da;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  margin: 0.25rem 0;
+}
+.tiny { font-size: 0.72rem; }
+.requeue-label { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+.requeue-label input { width: 100%; margin-top: 0.25rem; }
+
+/* 设置 */
+.settings-box {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  background: #fbf1e3;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem;
+}
+.settings-box label { font-size: 0.82rem; color: var(--muted); margin-bottom: 0; }
+.settings-box input { width: 6.5rem; margin-top: 0.3rem; }
+
+/* 事件 / 争抢记录 */
+.event-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; }
+.event-list li {
+  display: grid;
+  grid-template-columns: 8.5rem 5.5rem 1fr 3.5rem;
+  gap: 0.5rem;
+  border-bottom: 1px dashed var(--line);
+  padding: 0.35rem 0.2rem;
+  font-size: 0.8rem;
+  align-items: baseline;
+}
+.ev-time { color: var(--muted); font-size: 0.72rem; }
+.ev-kind { font-weight: 700; }
+.ev-kind.skew { color: var(--danger); }
+.ev-kind.content { color: var(--info); }
+.ev-detail { color: var(--ink); }
+.ev-actor { color: var(--muted); font-size: 0.72rem; text-align: right; }
+.ev-exit_skew { background: #fbe9e3; }
+.ev-contention { background: #eef3ff; }
+.ev-retry_ok .ev-kind { color: var(--ok); }
+.msg-err { color: var(--danger); font-weight: 600; }

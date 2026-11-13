@@ -1,5 +1,6 @@
-import os
+from contextlib import contextmanager
 from pathlib import Path
+import sqlite3
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -7,7 +8,44 @@ from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app.config import Config
-from app.db import get_db, get_pipeline, init_db, list_pipelines, run_extract, run_load
+from app.db import (
+    EXIT_PATHS,
+    RetryError,
+    connect,
+    get_db,
+    get_pipeline,
+    get_settings,
+    init_db,
+    list_pipelines,
+    requeue_dead_row,
+    retry_overview,
+    run_extract,
+    run_load,
+    run_sweep,
+    save_settings,
+    trigger_manual_retry,
+)
+from app.scheduler import scheduler, start_scheduler
+
+
+@contextmanager
+def db_session():
+    """领域错误（RetryError）抛出前先提交，保留争抢/出路写歪/全量拦截等事件记录；
+    其余异常照常回滚。直接持有单连接，避免与 get_db 嵌套导致二次提交。
+    注意：RetryError 必须穿透本上下文，在 with 块外再转成 HTTPException。"""
+    conn = connect()
+    try:
+        yield conn
+    except RetryError:
+        conn.commit()
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    else:
+        conn.commit()
+    finally:
+        conn.close()
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -38,6 +76,12 @@ def require_user(request: Request) -> str:
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    scheduler.stop()
 
 
 @app.get("/")
@@ -92,6 +136,81 @@ def api_me(user: str = Depends(require_user)):
 def api_pipelines(user: str = Depends(require_user)):
     with get_db() as conn:
         return {"items": list_pipelines(conn)}
+
+
+@app.get("/api/retry/overview")
+def api_retry_overview(user: str = Depends(require_user)):
+    with get_db() as conn:
+        return retry_overview(conn)
+
+
+@app.get("/api/retry/settings")
+def api_get_settings(user: str = Depends(require_user)):
+    with get_db() as conn:
+        return get_settings(conn)
+
+
+@app.put("/api/retry/settings")
+async def api_put_settings(request: Request, user: str = Depends(require_user)):
+    body = await request.json()
+    try:
+        max_retries = int(body.get("max_auto_retries"))
+        delay = int(body.get("retry_delay_seconds"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="重试设置须为整数")
+    try:
+        with db_session() as conn:
+            return save_settings(conn, max_retries, delay)
+    except RetryError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+
+
+@app.post("/api/retry/sweep")
+def api_sweep(user: str = Depends(require_user)):
+    """跑一轮服务端自动重试调度（后台线程也会自动跑，此接口便于钉死时序）。"""
+    with get_db() as conn:
+        return run_sweep(conn)
+
+
+@app.post("/api/retry/rows/{row_id}/retry")
+async def api_manual_retry(row_id: int, request: Request, user: str = Depends(require_user)):
+    body = {}
+    try:
+        raw = await request.body()
+        if raw:
+            body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="请求体须为 JSON")
+    exit_path = body.get("exit_path")
+    if exit_path is not None and exit_path not in EXIT_PATHS:
+        raise HTTPException(status_code=400, detail="重试出路写歪了：只能选 dead 或 manual")
+    try:
+        with db_session() as conn:
+            return trigger_manual_retry(conn, row_id, exit_path, user)
+    except RetryError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
+    except sqlite3.OperationalError as exc:
+        # 并发下写锁竞争：归一为争抢只成一笔，而不是 500
+        if "locked" in str(exc).lower():
+            raise HTTPException(status_code=409, detail="该行重试已在处理中，争抢只成一笔")
+        raise
+
+
+@app.post("/api/retry/rows/{row_id}/requeue")
+async def api_requeue(row_id: int, request: Request, user: str = Depends(require_user)):
+    body = {}
+    raw = await request.body()
+    if raw:
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="请求体须为 JSON")
+    reason = str(body.get("reason", "")).strip()
+    try:
+        with db_session() as conn:
+            return requeue_dead_row(conn, row_id, reason, user)
+    except RetryError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
 
 
 @app.get("/api/pipelines/{pipeline_id}")

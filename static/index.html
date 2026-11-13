@@ -14,7 +14,15 @@
       <span class="who">{{ me }}</span>
       <button class="ghost" @click="logout">退出</button>
     </header>
-    <p class="muted">基线能力：管道列表、抽取、落库。后续题面在此叠加增量水位、清洗规则、并发争用等。</p>
+
+    <!-- 置顶总览：重试中 / 死信 / 人工待点 / 队列 -->
+    <section class="overview">
+      <div class="stat" v-for="s in statTiles" :key="s.key" :class="s.key">
+        <span class="stat-num">{{ overview.totals[s.key] }}</span>
+        <span class="stat-label">{{ s.label }}</span>
+      </div>
+    </section>
+
     <div class="board">
       <section class="panel">
         <h2>管道列表</h2>
@@ -33,21 +41,115 @@
           <span class="tag" :class="tagClass(p.status)">{{ p.status }}</span>
         </div>
       </section>
-      <section class="panel">
+
+      <section class="panel detail">
         <h2>管道详情</h2>
-        <div v-if="!current" class="empty">点左侧一条查看抽取与落库状态</div>
+        <div v-if="!current" class="empty">点左侧一条查看抽取、重试队列与死信筐</div>
         <template v-else>
-          <p class="kv"><b>题名</b>{{ current.title }}</p>
-          <p class="kv"><b>编码</b><span class="code">{{ current.code }}</span></p>
-          <p class="kv"><b>源地址</b><span class="code">{{ current.source_uri }}</span></p>
-          <p class="kv"><b>状态</b><span class="tag" :class="tagClass(current.status)">{{ current.status }}</span></p>
-          <p class="kv"><b>已抽取</b>{{ current.extracted }}</p>
-          <p class="kv"><b>已落库</b>{{ current.loaded }}</p>
+          <div class="detail-head">
+            <div>
+              <p class="kv"><b>题名</b>{{ current.title }}</p>
+              <p class="kv"><b>编码</b><span class="code">{{ current.code }}</span></p>
+              <p class="kv"><b>源地址</b><span class="code">{{ current.source_uri }}</span></p>
+              <p class="kv"><b>状态</b><span class="tag" :class="tagClass(current.status)">{{ current.status }}</span>
+                <span v-if="current.full_running" class="tag running">全量抽取进行中</span>
+              </p>
+              <p class="kv"><b>已抽取</b>{{ current.extracted }}　<b>已落库</b>{{ current.loaded }}</p>
+            </div>
+            <button class="linklike" @click="showEvents = !showEvents">
+              {{ showEvents ? "收起" : "展开" }}失败摘要 / 争抢记录
+            </button>
+          </div>
+
+          <div v-if="current.full_running" class="banner warn-banner">
+            管道正在跑全量抽取，单行重试已禁止，待全量结束后再点。
+          </div>
+
           <div class="actions">
-            <button @click="extract" :disabled="busy">执行抽取</button>
+            <button @click="extract" :disabled="busy || current.full_running">执行全量抽取</button>
             <button class="ghost" @click="load" :disabled="busy">执行落库</button>
           </div>
-          <p v-if="msg" class="muted">{{ msg }}</p>
+
+          <!-- 置顶：重试队列 -->
+          <h3 class="block-title queue-title">重试队列 <em>{{ queuedRows.length }}</em>
+            <span class="hint-inline">自动调度在服务端周期跑，到点自动重试</span>
+          </h3>
+          <div v-if="!queuedRows.length" class="empty compact">队列暂无待重试失败行</div>
+          <div v-for="r in queuedRows" :key="r.id" class="retry-row queue-box" :class="rowStateClass(r.state)">
+            <div class="retry-main">
+              <div class="retry-line">
+                <span class="code">{{ r.row_key }}</span>
+                <span class="tag" :class="rowStateClass(r.state)">{{ r.state }}</span>
+                <span class="tag mini">尝试 {{ r.attempts }}</span>
+                <span class="tag mini">自动 {{ r.auto_retries }}/{{ current.settings.max_auto_retries }}</span>
+              </div>
+              <div class="err-text">{{ r.last_error }}</div>
+              <div v-if="r.exit_note" class="exit-note">出路（当日锁定）：{{ r.exit_note }}</div>
+              <div class="code tiny">下次可重试：{{ r.next_retry_at || "—" }}</div>
+            </div>
+            <div class="retry-ops">
+              <select v-model="exitChoice[r.id]" :disabled="r.state === '重试中' || current.full_running">
+                <option value="">出路…</option>
+                <option value="dead">满次转死信停自动</option>
+                <option value="manual">留队列仅人工触发</option>
+              </select>
+              <button :disabled="r.state === '重试中' || current.full_running"
+                      @click="retryRow(r)">触发重试</button>
+            </div>
+          </div>
+
+          <!-- 置顶：死信筐 -->
+          <h3 class="block-title dead-title">死信筐 <em>{{ deadRows.length }}</em>
+            <span class="hint-inline">回炉须填原因，回炉后仅人工触发</span>
+          </h3>
+          <div v-if="!deadRows.length" class="empty compact">死信筐为空</div>
+          <div v-for="r in deadRows" :key="r.id" class="retry-row dead-box">
+            <div class="retry-main">
+              <div class="retry-line">
+                <span class="code">{{ r.row_key }}</span>
+                <span class="tag dead">{{ r.state }}</span>
+                <span class="tag mini">尝试 {{ r.attempts }}</span>
+              </div>
+              <div class="err-text">{{ r.last_error }}</div>
+              <div v-if="r.exit_note" class="exit-note">出路说明：{{ r.exit_note }}</div>
+              <label class="requeue-label">回炉原因（必填）
+                <input v-model="requeueReason[r.id]" placeholder="例如：源端已恢复，人工复核后回炉" />
+              </label>
+            </div>
+            <div class="retry-ops">
+              <button @click="requeueRow(r)">回炉</button>
+            </div>
+          </div>
+
+          <!-- 重试设置 -->
+          <h3 class="block-title">重试设置</h3>
+          <div class="settings-box">
+            <label>同一失败行自动重试次数上限
+              <input type="number" min="0" v-model.number="settingsForm.max_auto_retries" />
+            </label>
+            <label>重试间隔（秒）
+              <input type="number" min="0" v-model.number="settingsForm.retry_delay_seconds" />
+            </label>
+            <button class="ghost" @click="saveSettings">保存设置</button>
+          </div>
+
+          <!-- 可展开：失败摘要与重试争抢记录 -->
+          <template v-if="showEvents">
+            <h3 class="block-title">失败摘要 / 重试争抢记录</h3>
+            <div v-if="!current.events.length" class="empty compact">暂无事件</div>
+            <ul class="event-list">
+              <li v-for="e in current.events" :key="e.id" :class="['ev-' + e.kind]">
+                <span class="ev-time code">{{ e.created_at }}</span>
+                <span class="ev-kind" :class="{ skew: e.kind === 'exit_skew', content: e.kind === 'contention' }">
+                  {{ eventLabel(e.kind) }}
+                </span>
+                <span class="ev-detail">{{ e.detail }}</span>
+                <span class="ev-actor code">{{ e.actor }}</span>
+              </li>
+            </ul>
+          </template>
+
+          <p v-if="msg" class="muted" :class="{ 'msg-err': msgErr }">{{ msg }}</p>
         </template>
       </section>
     </div>

@@ -8,9 +8,10 @@ from app.main import app
 
 
 @pytest.fixture()
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     db = tmp_path / "test.db"
-    os.environ["DATABASE_PATH"] = str(db)
+    monkeypatch.setenv("DATABASE_PATH", str(db))
+    monkeypatch.setenv("RETRY_SCHEDULER", "off")
     init_db(str(db))
     with TestClient(app) as c:
         yield c
