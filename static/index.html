@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>抽取转换加载台</title>
+  <link rel="stylesheet" href="/static/css/etl.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+  <div id="app" class="shell">
+    <header class="top">
+      <h1>抽取转换加载台</h1>
+      <span class="who">{{ me }}</span>
+      <button class="ghost" @click="logout">退出</button>
+    </header>
+    <p class="muted">基线能力：管道列表、抽取、落库。后续题面在此叠加增量水位、清洗规则、并发争用等。</p>
+    <div class="board">
+      <section class="panel">
+        <h2>管道列表</h2>
+        <div v-if="!items.length" class="empty">暂无管道</div>
+        <div
+          v-for="p in items"
+          :key="p.id"
+          class="row"
+          :class="{ active: current && current.id === p.id }"
+          @click="open(p.id)"
+        >
+          <div>
+            <div>{{ p.title }}</div>
+            <div class="code">{{ p.code }} · {{ p.source_uri }}</div>
+          </div>
+          <span class="tag" :class="tagClass(p.status)">{{ p.status }}</span>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>管道详情</h2>
+        <div v-if="!current" class="empty">点左侧一条查看抽取与落库状态</div>
+        <template v-else>
+          <p class="kv"><b>题名</b>{{ current.title }}</p>
+          <p class="kv"><b>编码</b><span class="code">{{ current.code }}</span></p>
+          <p class="kv"><b>源地址</b><span class="code">{{ current.source_uri }}</span></p>
+          <p class="kv"><b>状态</b><span class="tag" :class="tagClass(current.status)">{{ current.status }}</span></p>
+          <p class="kv"><b>已抽取</b>{{ current.extracted }}</p>
+          <p class="kv"><b>已落库</b>{{ current.loaded }}</p>
+          <div class="actions">
+            <button @click="extract" :disabled="busy">执行抽取</button>
+            <button class="ghost" @click="load" :disabled="busy">执行落库</button>
+          </div>
+          <p v-if="msg" class="muted">{{ msg }}</p>
+        </template>
+      </section>
+    </div>
+  </div>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

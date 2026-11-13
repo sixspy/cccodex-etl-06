@@ -1,0 +1,27 @@
+services:
+  etl-lab:
+    build: .
+    container_name: cc-etl-lab-etl-06
+    ports:
+      - "6050:6000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "6000"
+      DATABASE_PATH: /app/instance/etl_lab.db
+    volumes:
+      - etl_lab_data:/app/instance
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6000/login', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  etl_lab_data:

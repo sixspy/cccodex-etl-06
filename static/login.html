@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>抽取转换加载台 · 登录</title>
+  <link rel="stylesheet" href="/static/css/etl.css" />
+</head>
+<body class="login-body">
+  <main class="login-panel">
+    <p class="brand">数据工程 · 抽取转换加载</p>
+    <h1>抽取转换加载台</h1>
+    <p class="hint">基线账号 admin / 123456。登录后可看管道列表并点抽取与落库。</p>
+    <form id="login-form">
+      <label>账号<input name="username" autocomplete="username" required /></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
+      <button type="submit">进入管道台</button>
+      <p id="err" class="err" hidden></p>
+    </form>
+  </main>
+  <script>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: fd.get("username"),
+          password: fd.get("password"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const err = document.getElementById("err");
+        err.hidden = false;
+        err.textContent = data.error || "登录失败";
+        return;
+      }
+      location.href = "/app/";
+    });
+  </script>
+</body>
+</html>
